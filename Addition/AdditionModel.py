@@ -12,7 +12,16 @@ Characters = "0123456789+_"
 Characters2Numbers = {c:i for i,c in enumerate(list(Characters))}
 Numbers2Characters = {i:c for i,c in enumerate(list(Characters))}
 
-
+class MyCallBack(tf.keras.callbacks.Callback):
+    def __init__(self):
+        self.acc = 0.50
+        self.repetition = 1
+    def on_epoch_end(self, epoch, logs={}):
+        if self.repetition % 5 == 0:
+            self.model.save("my_model_2")
+        self.repetition+=1
+            
+callback = MyCallBack()
 
 def VectorizeString(string):
     vectorizedString = []
@@ -61,16 +70,9 @@ else:
     np.save("Inp.npy", Inp.numpy())
     np.save("Out.npy", Out.numpy())
 
-if os.path.exists("my_model_2"):
-    model = tf.keras.models.load_model("my_model_4")
-    # model.fit(Inp, Out, epochs = 10, validation_split=0.1)
-    y = model.predict(np.reshape(np.array(VectorizeString("115244+__1834")), (1, 13, 1)))
-    y = np.squeeze(y)
-    y = np.argmax(y, axis=1)
-    print(115244+1834)
-    for i in y:
-        print(Numbers2Characters[i])
-    # model.save("my_model_4")
+if os.path.exists("my_model"):
+    model = tf.keras.models.load_model("my_model")
+    model.fit(Inp, Out, epochs = 75, validation_split=0.1, callbacks = [callback])
 else:
     model = tf.keras.Sequential([
         tf.keras.layers.LSTM(256,  dtype = tf.float32),
@@ -81,7 +83,7 @@ else:
     ])
     model.compile(loss = "sparse_categorical_crossentropy", optimizer = "adam", metrics = ["accuracy"])
 
-    model.fit(Inp, Out, epochs = 75, validation_split = 0.1)
+    model.fit(Inp, Out, epochs = 75, validation_split = 0.1, callbacks = [callback])
     model.save("my_model")
 
 
