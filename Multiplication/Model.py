@@ -9,17 +9,17 @@ Max_Value_Of_Training_Data = 500000
 
 Characters = Data_V2.Characters
 
-Enc_Inp, Dec_Inp, Output = Data_V2.PrepareData(Quantity_Of_Training_Data, Min_Value_Of_Training_Data, Max_Value_Of_Training_Data)
+# Enc_Inp, Dec_Inp, Output = Data_V2.PrepareData(Quantity_Of_Training_Data, Min_Value_Of_Training_Data, Max_Value_Of_Training_Data)
 
 
 
-np.save("EncInp", Enc_Inp)
-np.save("DecInp", Dec_Inp)
-np.save("Output", Output)
+# np.save("EncInp", Enc_Inp)
+# np.save("DecInp", Dec_Inp)
+# np.save("Output", Output)
 
 class MyCallBack(tf.keras.callbacks.Callback):
     def __init__(self):
-        self.acc = 0.75
+        self.acc = 0.50
     def on_epoch_end(self, epoch, logs={}):
         if logs.get("accuracy") > self.acc:
             print("\n\nReached %f percent accuracy"%self.acc)
@@ -34,6 +34,10 @@ embedding = tf.keras.layers.Embedding(len(Characters)+1, 32)
 
 callback = MyCallBack()
 
+
+Enc_Inp = np.load("EncInp.npy")
+Dec_Inp = np.load("DecInp.npy")
+Output = np.load("Output.npy")
 
 
 
@@ -55,4 +59,4 @@ model.compile(optimizer = "adam", loss = "sparse_categorical_crossentropy", metr
 print(model.summary())
 
 
-model.fit([Enc_Inp, Dec_Inp], Output, epochs = 1000, callbacks = [callback] )
+model.fit([Enc_Inp, Dec_Inp], Output, epochs = 1000, callbacks = [callback], validation_split = 0.1)
