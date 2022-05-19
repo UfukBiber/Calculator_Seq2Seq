@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 
-Characters = "se0123456789+-*_"
+Characters = "_se0123456789+-*"
 
 Characters2Numbers = {c:i for i,c in enumerate(list(Characters))}
 Numbers2Characters = {i:c for i,c in enumerate(list(Characters))}
@@ -25,16 +25,16 @@ def PrepareData(quantity, Min, Max):
     Out = []
     allData = []
     OutLength = len(2 * str(Max)) + 1
-    InpLength = len(str(Max)) * 2 + 2
+    InpLength = len(str(Max)) * 2 + 1
     while len(EncInp)  < quantity:
         x = random.randint(Min, Max)
         y = random.randint(Min, Max)
         if notInclude([x, y], allData):
             allData.append([x, y])
-            EncInpAddition = str(x) + "+" + str(y) + "e"
+            EncInpAddition = str(x) + "+" + str(y) 
             DecInpAddition = "s" + str(x+y)
             outputAddition = str(x+y) + "e"
-            EncInpSubtraction = str(x) + "-" + str(y) + "e"
+            EncInpSubtraction = str(x) + "-" + str(y) 
             DecInpSubtraction = "s" + str(x-y)
             outputSubtraction = str(x-y) + "e"
 
@@ -45,14 +45,14 @@ def PrepareData(quantity, Min, Max):
                 EncInpSubtraction =EncInpSubtraction +  "_"*(InpLength-len(EncInpSubtraction))
             
             if len(outputAddition) < OutLength:
-                outputAddition =outputAddition +  "_"*(OutLength-len(outputAddition)) 
+                outputAddition =  outputAddition  + "_"*(OutLength-len(outputAddition))  
             if len(outputSubtraction) < OutLength:
-                outputSubtraction = outputSubtraction + "_"*(OutLength-len(outputSubtraction))  
+                outputSubtraction = outputSubtraction +  "_"*(OutLength-len(outputSubtraction))  
             
             if len(DecInpAddition) < OutLength:
-                DecInpAddition = DecInpAddition  + "_"*(OutLength-len(DecInpAddition)) 
+                DecInpAddition =  DecInpAddition + "_"*(OutLength-len(DecInpAddition))   
             if len(DecInpSubtraction) < OutLength:
-                DecInpSubtraction = DecInpSubtraction + "_"*(OutLength-len(DecInpSubtraction)) 
+                DecInpSubtraction =   DecInpSubtraction + "_"*(OutLength-len(DecInpSubtraction))  
             
             EncInp.append(VectorizeString(EncInpAddition))
             DecInp.append(VectorizeString(DecInpAddition))
