@@ -1,13 +1,13 @@
+import numpy as np
 import tensorflow as tf
 import random
-import numpy as np
-
 Characters = " se+=0123456789"
 Characters2Numbers = {c:i for i,c in enumerate(list(Characters))}
 Numbers2Characters = {i:c for i,c in enumerate(list(Characters))}
 
 
-QUANTITY = 18
+
+QUANTITY = 216000
 VALIDATION_SPLIT = 0.1
 LSTM_UNITS = 256
 TRAIN_LENGTH = int(QUANTITY * (1 - VALIDATION_SPLIT))
@@ -44,8 +44,24 @@ def PrepareData(Quantity, Min, Max):
     print("\n")
     return data
 
+try:
+    with open("data.txt", "r") as f:
+        data = []
+        for line in f:
+            line = line.replace("\n", "")
+            encInp, decInp, Out = line.split("\t")
+            data.append(({"encoder_input": encInp, "decoder_input": decInp}, Out))
+        f.close()
+    print("Saved Data will be used")
+except:
+    print("New data will be used")
+    data = PrepareData(QUANTITY, MIN, MAX)
+    with open("data.txt", "w") as f:
+        for line in data:
+            f.write(line[0]["encoder_input"]+"\t"+line[0]["decoder_input"]+"\t"+line[1]+"\n")
+        f.close()
+    
 
-data = PrepareData(QUANTITY, MIN, MAX)
 random.seed(23415)
 random.shuffle(data)
 
@@ -78,6 +94,15 @@ valData = data[TRAIN_LENGTH:]
 trainInp, trainOut = format_data(trainData)
 valInp, valOut = format_data(valData)
 
+
+train_ds = tf.data.Dataset.from_tensor_slices((trainInp, trainOut)).batch(BATCH_SIZE)
+val_ds = tf.data.Dataset.from_tensor_slices((valInp, valOut)).batch(BATCH_SIZE)
+
+
+
+train_ds = train_ds.shuffle(1024).prefetch(1024)
+val_ds = val_ds.shuffle(1024).prefetch(1024)
+
 EncInp = tf.keras.layers.Input(shape= (None,), name = "encoder_input")
 encoderEmbedded = tf.keras.layers.Embedding(len(Characters), EMBED_DIMS, mask_zero = True)(EncInp)
 encOut, Enc_State_for, Enc_state_back = tf.keras.layers.Bidirectional(tf.keras.layers.GRU(LSTM_UNITS, return_state = True, name = "GRU_Encoder"))(encoderEmbedded)
@@ -92,33 +117,16 @@ decOut = tf.keras.layers.Dense(len(Characters), activation = "softmax")(decOut)
 
 
 model = tf.keras.models.Model(inputs = [EncInp, DecInp], outputs = decOut)
-####################
-model.load_weights("EncoderDecoderModel/EncoderDecoder")
+
+try:
+    model.load_weights("EncoderDecoderModel/EncoderDecoder")
+    print("Saved model will be used.")
+except:
+    print("New model will be used.")
+
+model.compile(optimizer = "adam", loss = "sparse_categorical_crossentropy", metrics = ["accuracy"])
 
 
 
-def Predict(Inp):
-    if len(Inp) < 14:
-        Inp += " "*(14-len(Inp))
-    VectorInp = tf.expand_dims(tf.constant([Characters2Numbers[i] for i in Inp]), axis = 0)
-    decInp = np.zeros((1, trainOut.shape[-1]))
-    decInp[0, 0] = Characters2Numbers["s"]
-    result = []
-    step = 0
-    while step < trainOut.shape[-1]:
-        output = model([VectorInp, decInp])
-        output = np.argmax(output[0, step, :])
-        print(Numbers2Characters[output])
-        result.append(output)
-        if "e" == Numbers2Characters[output]:
-            break
-        else:
-            step += 1
-            decInp[:, step] = output
-        
-a = 42
-b = 812
-Inp = str(a)+"+"+str(b)+"="
-Predict(Inp)
-print("\n")
-print(a+b)
+model.fit(train_ds, validation_data = val_ds, epochs = 3, callbacks = [tf.keras.callbacks.ModelCheckpoint("EncoderDecoderModel/EncoderDecoder", save_best_only = True, save_weights_only = True),
+                                                                        tf.keras.callbacks.EarlyStopping(monitor = "val_accuracy", patience = 3)])
