@@ -2,10 +2,12 @@ import tensorflow as tf
 import random
 import numpy as np
 
+
+
+
 Characters = " se+=0123456789"
 Characters2Numbers = {c:i for i,c in enumerate(list(Characters))}
 Numbers2Characters = {i:c for i,c in enumerate(list(Characters))}
-
 
 
 QUANTITY = 10000
@@ -17,6 +19,8 @@ EMBED_DIMS = 128
 DENSE_DIMS = 1024
 NUM_HEADS = 8
 BATCH_SIZE = 128
+SEQ_LENGTH = 18
+DropRate = 0.3
 
 
 
@@ -62,13 +66,18 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.layerNormalization1 = tf.keras.layers.LayerNormalization() 
         self.layerNormalization2 = tf.keras.layers.LayerNormalization()
 
+        self.dropout1 = tf.keras.layers.Dropout(DropRate)
+        self.dropout2 = tf.keras.layers.Dropout(DropRate)
+
         self.supports_masking = True
-    def call(self, inputs, mask = None):
+    def call(self, inputs, training, mask = None):
         if mask is not None:
             mask = mask[:, tf.newaxis, :]
         attentionOutput = self.attention(inputs, inputs, attention_mask = mask)
+        attentionOutput = self.dropout1(attentionOutput, training = training)
         projInput = self.layerNormalization1(inputs + attentionOutput)
         projOut = self.denseProj(projInput)
+        projOut = self.dropout2(projOut, training = training)
         return self.layerNormalization2(projInput + projOut)
         
 
@@ -97,19 +106,25 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.layerNormalization2 = tf.keras.layers.LayerNormalization() 
         self.layerNormalization3 = tf.keras.layers.LayerNormalization()
 
+        self.dropout1 = tf.keras.layers.Dropout(DropRate)
+        self.dropout2 = tf.keras.layers.Dropout(DropRate)
+        self.dropout3 = tf.keras.layers.Dropout(DropRate)
 
         self.supports_masking = True
 
-    def call(self, inputs, encoderOut, mask = None):
+    def call(self, inputs, encoderOut, training, mask = None):
         causal_mask = self.get_causal_attention_mask(inputs)
         if mask is not None:
             mask = tf.cast(mask[:, tf.newaxis, :], dtype = tf.int32)
             mask = tf.minimum(mask, causal_mask)
         attentionOut_1 = self.attention1(query = inputs, value = inputs, key = inputs, attention_mask = causal_mask)
+        attentionOut_1 = self.dropout1(attentionOut_1, training = training)
         attentionOut_1 = self.layerNormalization1(inputs + attentionOut_1)
         attentionOut_2 = self.attention2(query = attentionOut_1, value = encoderOut, key = encoderOut, attention_mask = mask)
+        attentionOut_2 = self.dropout2(attentionOut_2, training = training)
         attentionOut_2 = self.layerNormalization2(attentionOut_1 + attentionOut_2)
         projOut = self.denseProj(attentionOut_2)
+        projOut = self.dropout3(projOut, training = training)
         return self.layerNormalization3(attentionOut_2 + projOut)
     
     def get_causal_attention_mask(self, inputs):
@@ -130,16 +145,16 @@ class TransformerDecoder(tf.keras.layers.Layer):
             "numHeads":self.numHeads,
             "denseDims":self.denseDims}
 
+
 encoderInput = tf.keras.layers.Input(shape = (None,), name = "encoder_input")
-embeddedEncoder = PositionalEmbedding(len(Characters), EMBED_DIMS, 16)(encoderInput)
+embeddedEncoder = PositionalEmbedding(len(Characters), EMBED_DIMS, SEQ_LENGTH)(encoderInput)
 encoderOut = TransformerEncoder(EMBED_DIMS, NUM_HEADS, DENSE_DIMS)(embeddedEncoder)
 
 decoderInput = tf.keras.layers.Input(shape = (None, ), name = "decoder_input")
-embeddedDecoder = PositionalEmbedding(len(Characters), EMBED_DIMS, 16)(decoderInput)
+embeddedDecoder = PositionalEmbedding(len(Characters), EMBED_DIMS, SEQ_LENGTH)(decoderInput)
 decoderOut = TransformerDecoder(EMBED_DIMS, NUM_HEADS, DENSE_DIMS)(embeddedDecoder, encoderOut)
 decoderOut = tf.keras.layers.Dropout(0.3)(decoderOut)
 decoderOut = tf.keras.layers.Dense(len(Characters), activation = "softmax")(decoderOut)
-
 
 
 model = tf.keras.models.Model(inputs = [encoderInput, decoderInput], outputs = decoderOut)
@@ -152,14 +167,14 @@ model.load_weights("TransformerModel/Transformer")
 
 
 def Predict(Inp):
-    if len(Inp) < 16:
-        Inp += " "*(16-len(Inp))
+    if len(Inp) < SEQ_LENGTH:
+        Inp += " "*(SEQ_LENGTH-len(Inp))
     VectorInp = tf.expand_dims(tf.constant([Characters2Numbers[i] for i in Inp]), axis = 0)
-    decInp = np.zeros((1, 16))
+    decInp = np.zeros((1, SEQ_LENGTH))
     decInp[0, 0] = Characters2Numbers["s"]
     result = []
     step = 0
-    while step < 16:
+    while step < SEQ_LENGTH:
         output = model([VectorInp, decInp])
         output = np.argmax(output[0, step, :])
         result.append(Numbers2Characters[output])

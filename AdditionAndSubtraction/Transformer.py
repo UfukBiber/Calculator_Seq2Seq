@@ -7,7 +7,7 @@ Numbers2Characters = {i:c for i,c in enumerate(list(Characters))}
 
 
 
-QUANTITY = 20000
+QUANTITY = 10000
 VALIDATION_SPLIT = 0.1
 TRAIN_LENGTH = int(QUANTITY * (1 - VALIDATION_SPLIT))
 MIN = 4
@@ -17,7 +17,7 @@ DENSE_DIMS = 1024
 NUM_HEADS = 8
 BATCH_SIZE = 128
 SEQ_LENGTH = 18
-DropRate = 0.3
+DropRate = 0.2
 
 def PrepareData(Quantity, Max):
     data = []
@@ -30,9 +30,9 @@ def PrepareData(Quantity, Max):
             start_j =  10**j
             end_j = 10**(j+1)
             if i<=2 or j <=2:
-                sizeMax = 10
+                sizeMax = 50
             elif i <=4 or j <= 4:
-                sizeMax = 30
+                sizeMax = 90
             elif i == j:
                 sizeMax = Quantity*2
             else:
@@ -69,27 +69,27 @@ except:
 random.seed(23415)
 random.shuffle(data)
 
-def VectorizeData(data, max_len = None):
+def VectorizeData(data):
     vectorizedData = []
     for element in data:
         newElement = []
         for char in list(element):
             newElement.append(Characters2Numbers[char])
         vectorizedData.append(newElement)
-    vectorizedData = tf.keras.preprocessing.sequence.pad_sequences(vectorizedData, padding="post", maxlen = max_len)
+    vectorizedData = tf.keras.preprocessing.sequence.pad_sequences(vectorizedData, padding="post", maxlen = SEQ_LENGTH)
     return vectorizedData
 
 
-def format_data(pairs, seqLength):
+def format_data(pairs):
     Inp = {"encoder_input":[], "decoder_input":[]}
     Out = []
     for pair in pairs:
         Inp["encoder_input"].append(pair[0]["encoder_input"])
         Inp["decoder_input"].append(pair[0]["decoder_input"])
         Out.append(pair[1])
-    Inp["encoder_input"] = VectorizeData(Inp["encoder_input"], SEQ_LENGTH)
-    Inp["decoder_input"] = VectorizeData(Inp["decoder_input"], SEQ_LENGTH)
-    Out = VectorizeData(Out, SEQ_LENGTH)
+    Inp["encoder_input"] = VectorizeData(Inp["encoder_input"])
+    Inp["decoder_input"] = VectorizeData(Inp["decoder_input"])
+    Out = VectorizeData(Out)
     return Inp, Out
 
 
@@ -99,8 +99,7 @@ valData = data[TRAIN_LENGTH:]
 trainInp, trainOut = format_data(trainData)
 valInp, valOut = format_data(valData)
 
-INP_SEQ_LENGTH = trainInp["encoder_input"].shape[-1]
-OUT_SEQ_LENGTH = trainOut.shape[-1]
+
 
 train_ds = tf.data.Dataset.from_tensor_slices((trainInp, trainOut)).batch(BATCH_SIZE)
 val_ds = tf.data.Dataset.from_tensor_slices((valInp, valOut)).batch(BATCH_SIZE)
@@ -156,14 +155,14 @@ class TransformerEncoder(tf.keras.layers.Layer):
         self.dropout2 = tf.keras.layers.Dropout(DropRate)
 
         self.supports_masking = True
-    def call(self, inputs, mask = None):
+    def call(self, inputs, training, mask = None):
         if mask is not None:
             mask = mask[:, tf.newaxis, :]
         attentionOutput = self.attention(inputs, inputs, attention_mask = mask)
-        attentionOutput = self.dropout1(attentionOutput)
+        attentionOutput = self.dropout1(attentionOutput, training = training)
         projInput = self.layerNormalization1(inputs + attentionOutput)
         projOut = self.denseProj(projInput)
-        projOut = self.dropout2(projOut)
+        projOut = self.dropout2(projOut, training = training)
         return self.layerNormalization2(projInput + projOut)
         
 
@@ -198,19 +197,19 @@ class TransformerDecoder(tf.keras.layers.Layer):
 
         self.supports_masking = True
 
-    def call(self, inputs, encoderOut, mask = None):
+    def call(self, inputs, encoderOut, training, mask = None):
         causal_mask = self.get_causal_attention_mask(inputs)
         if mask is not None:
             mask = tf.cast(mask[:, tf.newaxis, :], dtype = tf.int32)
             mask = tf.minimum(mask, causal_mask)
         attentionOut_1 = self.attention1(query = inputs, value = inputs, key = inputs, attention_mask = causal_mask)
-        attentionOut_1 = self.dropout1(attentionOut_1)
+        attentionOut_1 = self.dropout1(attentionOut_1, training = training)
         attentionOut_1 = self.layerNormalization1(inputs + attentionOut_1)
         attentionOut_2 = self.attention2(query = attentionOut_1, value = encoderOut, key = encoderOut, attention_mask = mask)
-        attentionOut_2 = self.dropout2(attentionOut_2)
+        attentionOut_2 = self.dropout2(attentionOut_2, training = training)
         attentionOut_2 = self.layerNormalization2(attentionOut_1 + attentionOut_2)
         projOut = self.denseProj(attentionOut_2)
-        projOut = self.dropout3(projOut)
+        projOut = self.dropout3(projOut, training = training)
         return self.layerNormalization3(attentionOut_2 + projOut)
     
     def get_causal_attention_mask(self, inputs):
@@ -232,11 +231,11 @@ class TransformerDecoder(tf.keras.layers.Layer):
             "denseDims":self.denseDims}
 
 encoderInput = tf.keras.layers.Input(shape = (None,), name = "encoder_input")
-embeddedEncoder = PositionalEmbedding(len(Characters), EMBED_DIMS, INP_SEQ_LENGTH)(encoderInput)
+embeddedEncoder = PositionalEmbedding(len(Characters), EMBED_DIMS, SEQ_LENGTH)(encoderInput)
 encoderOut = TransformerEncoder(EMBED_DIMS, NUM_HEADS, DENSE_DIMS)(embeddedEncoder)
 
 decoderInput = tf.keras.layers.Input(shape = (None, ), name = "decoder_input")
-embeddedDecoder = PositionalEmbedding(len(Characters), EMBED_DIMS, OUT_SEQ_LENGTH)(decoderInput)
+embeddedDecoder = PositionalEmbedding(len(Characters), EMBED_DIMS, SEQ_LENGTH)(decoderInput)
 decoderOut = TransformerDecoder(EMBED_DIMS, NUM_HEADS, DENSE_DIMS)(embeddedDecoder, encoderOut)
 decoderOut = tf.keras.layers.Dropout(0.3)(decoderOut)
 decoderOut = tf.keras.layers.Dense(len(Characters), activation = "softmax")(decoderOut)
